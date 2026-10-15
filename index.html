@@ -1,0 +1,566 @@
+<!DOCTYPE html>
+<html lang="ca">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ocell Volador - Joc Stil Flappy Bird</title>
+    <!-- Tailwind CSS per a interfície i disseny responsive -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap');
+
+        body {
+            font-family: 'Press+Start+2P', monospace;
+            user-select: none;
+            -webkit-user-select: none;
+            touch-action: manipulation;
+        }
+
+        /* Estils personalitzats per al canvas i fons */
+        .game-font {
+            font-family: 'Press+Start+2P', monospace;
+        }
+        
+        /* Animació per als botons */
+        .btn-retro {
+            box-shadow: 0px 6px 0px #1e3a8a;
+            transition: all 0.1s ease;
+        }
+        .btn-retro:active {
+            transform: translateY(4px);
+            box-shadow: 0px 2px 0px #1e3a8a;
+        }
+    </style>
+</head>
+<body class="bg-slate-900 text-white min-h-screen flex flex-col items-center justify-center p-2 sm:p-4 overflow-hidden">
+
+    <!-- Contenidor principal del Joc -->
+    <div class="relative w-full max-w-md bg-sky-300 rounded-2xl shadow-2xl overflow-hidden border-4 border-slate-700 flex flex-col items-center">
+        
+        <!-- Capçalera amb Puntuació -->
+        <div class="w-full bg-slate-800 text-amber-400 p-3 flex justify-between items-center text-xs sm:text-sm z-10 border-b-4 border-slate-700">
+            <div>PUNTS: <span id="scoreDisplay" class="text-white">0</span></div>
+            <div>RÈCORD: <span id="highScoreDisplay" class="text-yellow-300">0</span></div>
+        </div>
+
+        <!-- Àrea de Joc / Canvas -->
+        <div class="relative w-full aspect-[2/3] max-h-[70vh] bg-sky-200 cursor-pointer" id="gameContainer">
+            <canvas id="gameCanvas" class="w-full h-full block"></canvas>
+
+            <!-- Pantalla d'Inici (Overlay) -->
+            <div id="startOverlay" class="absolute inset-0 bg-black/40 backdrop-blur-[2px] flex flex-col items-center justify-center p-6 text-center z-20">
+                <div class="animate-bounce mb-6">
+                    <!-- Icona Ocell SVG -->
+                    <svg class="w-20 h-20 text-yellow-400 drop-shadow-md" viewBox="0 0 100 100">
+                        <circle cx="50" cy="50" r="35" fill="#facc15" stroke="#1e293b" stroke-width="6"/>
+                        <circle cx="65" cy="40" r="8" fill="white" stroke="#1e293b" stroke-width="3"/>
+                        <circle cx="67" cy="40" r="3" fill="black"/>
+                        <path d="M 65 55 Q 85 55 80 65 Q 65 70 60 60 Z" fill="#f97316" stroke="#1e293b" stroke-width="4"/>
+                        <ellipse cx="35" cy="55" rx="12" ry="8" fill="#fef08a" stroke="#1e293b" stroke-width="4"/>
+                    </svg>
+                </div>
+                <h1 class="text-xl sm:text-2xl font-bold text-yellow-300 mb-4 drop-shadow-[0_3px_0_#000]">OCELL VOLADOR</h1>
+                <p class="text-xs text-white leading-relaxed mb-6 bg-slate-800/80 p-3 rounded-xl border-2 border-slate-600">
+                    Prem <span class="text-yellow-300">ESPAI</span> o <span class="text-yellow-300">TOCA LA PANTALLA</span> per alçar el vol!
+                </p>
+                <button id="startBtn" class="btn-retro bg-blue-500 hover:bg-blue-600 text-white font-bold py-3 px-6 rounded-xl border-2 border-slate-900 text-sm tracking-wider">
+                    COMENÇAR JOC
+                </button>
+            </div>
+
+            <!-- Pantalla de Game Over (Overlay) -->
+            <div id="gameOverOverlay" class="hidden absolute inset-0 bg-black/60 backdrop-blur-sm flex flex-col items-center justify-center p-6 text-center z-20">
+                <h2 class="text-2xl sm:text-3xl font-bold text-red-500 mb-2 drop-shadow-[0_3px_0_#000]">HAS PERDUT!</h2>
+                <p id="newRecordMsg" class="text-xs text-yellow-300 font-bold mb-4 animate-pulse hidden">NOU RÈCORD PERSONAL!</p>
+
+                <div class="bg-slate-800 border-4 border-slate-600 rounded-xl p-4 w-full max-w-[240px] mb-6 text-xs text-left space-y-2">
+                    <div class="flex justify-between">
+                        <span class="text-gray-400">Puntuació:</span>
+                        <span id="finalScore" class="text-white font-bold">0</span>
+                    </div>
+                    <div class="flex justify-between border-t border-slate-700 pt-2">
+                        <span class="text-gray-400">Millor Puntuació:</span>
+                        <span id="finalHighScore" class="text-yellow-400 font-bold">0</span>
+                    </div>
+                </div>
+
+                <button id="restartBtn" class="btn-retro bg-emerald-500 hover:bg-emerald-600 text-white font-bold py-3 px-6 rounded-xl border-2 border-slate-900 text-sm tracking-wider">
+                    JUGA DE NOU
+                </button>
+            </div>
+        </div>
+
+        <!-- Peu de pàgina amb controls addicionals -->
+        <div class="w-full bg-slate-800 text-slate-400 p-2 text-[10px] text-center border-t-2 border-slate-700 flex justify-between items-center px-4">
+            <span>Sons: <button id="muteBtn" class="text-yellow-400 underline ml-1">ACTIVATS</button></span>
+            <span>Feu clic / Espai</span>
+        </div>
+    </div>
+
+    <!-- Lògica del Joc -->
+    <script>
+        // --- Sintetitzador d'Àudio (Web Audio API) ---
+        class SoundEffects {
+            constructor() {
+                this.ctx = null;
+                this.muted = false;
+            }
+
+            init() {
+                if (!this.ctx) {
+                    const AudioContext = window.AudioContext || window.webkitAudioContext;
+                    this.ctx = new AudioContext();
+                }
+            }
+
+            playJump() {
+                if (this.muted || !this.ctx) return;
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(350, this.ctx.currentTime);
+                osc.frequency.exponentialRampToValueAtTime(700, this.ctx.currentTime + 0.12);
+
+                gain.gain.setValueAtTime(0.3, this.ctx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.01, this.ctx.currentTime + 0.12);
+
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+
+                osc.start();
+                osc.stop(this.ctx.currentTime + 0.12);
+            }
+
+            playScore() {
+                if (this.muted || !this.ctx) return;
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+
+                osc.type = 'triangle';
+                osc.frequency.setValueAtTime(523.25, this.ctx.currentTime); // C5
+                osc.frequency.setValueAtTime(659.25, this.ctx.currentTime + 0.08); // E5
+
+                gain.gain.setValueAtTime(0.2, this.ctx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.01, this.ctx.currentTime + 0.2);
+
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+
+                osc.start();
+                osc.stop(this.ctx.currentTime + 0.2);
+            }
+
+            playHit() {
+                if (this.muted || !this.ctx) return;
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+
+                osc.type = 'sawtooth';
+                osc.frequency.setValueAtTime(180, this.ctx.currentTime);
+                osc.frequency.exponentialRampToValueAtTime(40, this.ctx.currentTime + 0.25);
+
+                gain.gain.setValueAtTime(0.4, this.ctx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.01, this.ctx.currentTime + 0.25);
+
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+
+                osc.start();
+                osc.stop(this.ctx.currentTime + 0.25);
+            }
+        }
+
+        const sound = new SoundEffects();
+
+        // --- Elements del DOM ---
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const container = document.getElementById('gameContainer');
+        const scoreDisplay = document.getElementById('scoreDisplay');
+        const highScoreDisplay = document.getElementById('highScoreDisplay');
+        const startOverlay = document.getElementById('startOverlay');
+        const gameOverOverlay = document.getElementById('gameOverOverlay');
+        const startBtn = document.getElementById('startBtn');
+        const restartBtn = document.getElementById('restartBtn');
+        const finalScore = document.getElementById('finalScore');
+        const finalHighScore = document.getElementById('finalHighScore');
+        const newRecordMsg = document.getElementById('newRecordMsg');
+        const muteBtn = document.getElementById('muteBtn');
+
+        // --- Estat del Joc ---
+        let gameState = 'START'; // START, PLAYING, GAMEOVER
+        let score = 0;
+        let highScore = localStorage.getItem('flappy_bird_high_score') || 0;
+        highScoreDisplay.textContent = highScore;
+
+        // Configuració adaptable del Canvas
+        let width = 360;
+        let height = 540;
+
+        function resizeCanvas() {
+            const rect = container.getBoundingClientRect();
+            canvas.width = rect.width;
+            canvas.height = rect.height;
+            width = canvas.width;
+            height = canvas.height;
+        }
+
+        window.addEventListener('resize', resizeCanvas);
+        resizeCanvas();
+
+        // --- Objectes del Joc ---
+        const bird = {
+            x: 0,
+            y: 0,
+            radius: 16,
+            velocity: 0,
+            gravity: 0.35,
+            jumpStrength: -7,
+            rotation: 0,
+
+            reset() {
+                this.x = width * 0.28;
+                this.y = height * 0.4;
+                this.velocity = 0;
+                this.rotation = 0;
+            },
+
+            flap() {
+                this.velocity = this.jumpStrength;
+                sound.playJump();
+            },
+
+            update() {
+                this.velocity += this.gravity;
+                this.y += this.velocity;
+
+                // Angle de rotació segons la velocitat
+                this.rotation = Math.min(Math.PI / 4, Math.max(-Math.PI / 5, this.velocity * 0.08));
+
+                // Límits del sostre
+                if (this.y - this.radius < 0) {
+                    this.y = this.radius;
+                    this.velocity = 0;
+                }
+            },
+
+            draw() {
+                ctx.save();
+                ctx.translate(this.x, this.y);
+                ctx.rotate(this.rotation);
+
+                // Cos (Groc)
+                ctx.fillStyle = '#facc15';
+                ctx.beginPath();
+                ctx.arc(0, 0, this.radius, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.lineWidth = 3;
+                ctx.strokeStyle = '#0f172a';
+                ctx.stroke();
+
+                // Ull (Blanc + Pupil·la negra)
+                ctx.fillStyle = '#ffffff';
+                ctx.beginPath();
+                ctx.arc(6, -6, 6, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.stroke();
+
+                ctx.fillStyle = '#000000';
+                ctx.beginPath();
+                ctx.arc(8, -6, 2.5, 0, Math.PI * 2);
+                ctx.fill();
+
+                // Bec (Taronja)
+                ctx.fillStyle = '#f97316';
+                ctx.beginPath();
+                ctx.moveTo(8, 2);
+                ctx.lineTo(20, 6);
+                ctx.lineTo(8, 12);
+                ctx.closePath();
+                ctx.fill();
+                ctx.stroke();
+
+                // Ala (Groc clar)
+                ctx.fillStyle = '#fef08a';
+                ctx.beginPath();
+                ctx.ellipse(-6, 4, 8, 5, 0.2, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.stroke();
+
+                ctx.restore();
+            }
+        };
+
+        // Escenari / Canonades
+        const pipes = {
+            list: [],
+            width: 52,
+            gap: 135,
+            speed: 2.2,
+            spawnTimer: 0,
+            spawnInterval: 100,
+
+            reset() {
+                this.list = [];
+                this.spawnTimer = 0;
+            },
+
+            update() {
+                this.spawnTimer++;
+                if (this.spawnTimer >= this.spawnInterval) {
+                    this.spawnTimer = 0;
+                    
+                    // Alçada aleatòria per a la bretxa
+                    const minHeight = 60;
+                    const maxHeight = height - 120 - this.gap - minHeight;
+                    const topHeight = minHeight + Math.random() * maxHeight;
+
+                    this.list.push({
+                        x: width,
+                        top: topHeight,
+                        bottom: height - 60 - (topHeight + this.gap),
+                        passed: false
+                    });
+                }
+
+                // Moure canonades
+                for (let i = this.list.length - 1; i >= 0; i--) {
+                    const p = this.list[i];
+                    p.x -= this.speed;
+
+                    // Puntuar quan l'ocell supera la canonada
+                    if (!p.passed && p.x + this.width < bird.x) {
+                        p.passed = true;
+                        score++;
+                        scoreDisplay.textContent = score;
+                        sound.playScore();
+                    }
+
+                    // Eliminar canonades fora de pantalla
+                    if (p.x + this.width < 0) {
+                        this.list.splice(i, 1);
+                    }
+                }
+            },
+
+            draw() {
+                ctx.fillStyle = '#22c55e'; // Verd canonada
+                ctx.strokeStyle = '#0f172a'; // Tancament fosc
+                ctx.lineWidth = 3;
+
+                this.list.forEach(p => {
+                    // Canonada Superior
+                    ctx.fillRect(p.x, 0, this.width, p.top);
+                    ctx.strokeRect(p.x, 0, this.width, p.top);
+                    // Vora de la canonada superior
+                    ctx.fillRect(p.x - 4, p.top - 20, this.width + 8, 20);
+                    ctx.strokeRect(p.x - 4, p.top - 20, this.width + 8, 20);
+
+                    // Canonada Inferior
+                    const bottomY = height - 60 - p.bottom;
+                    ctx.fillRect(p.x, bottomY, this.width, p.bottom);
+                    ctx.strokeRect(p.x, bottomY, this.width, p.bottom);
+                    // Vora de la canonada inferior
+                    ctx.fillRect(p.x - 4, bottomY, this.width + 8, 20);
+                    ctx.strokeRect(p.x - 4, bottomY, this.width + 8, 20);
+                });
+            }
+        };
+
+        // Fons Decoratiu (Sòl, Núvols, Muntanyes)
+        const background = {
+            groundOffset: 0,
+
+            update() {
+                if (gameState === 'PLAYING') {
+                    this.groundOffset = (this.groundOffset + pipes.speed) % 20;
+                }
+            },
+
+            draw() {
+                const groundHeight = 60;
+                const groundY = height - groundHeight;
+
+                // Cel fons
+                ctx.fillStyle = '#7dd3fc';
+                ctx.fillRect(0, 0, width, height);
+
+                // Núvols
+                ctx.fillStyle = '#ffffff';
+                ctx.beginPath();
+                ctx.arc(80, 100, 25, 0, Math.PI * 2);
+                ctx.arc(110, 90, 35, 0, Math.PI * 2);
+                ctx.arc(140, 100, 25, 0, Math.PI * 2);
+                ctx.fill();
+
+                ctx.beginPath();
+                ctx.arc(260, 160, 20, 0, Math.PI * 2);
+                ctx.arc(285, 150, 28, 0, Math.PI * 2);
+                ctx.arc(310, 160, 20, 0, Math.PI * 2);
+                ctx.fill();
+
+                // Sòl
+                ctx.fillStyle = '#eab308'; // sorra/terra
+                ctx.fillRect(0, groundY, width, groundHeight);
+
+                // Gespa superior del sòl
+                ctx.fillStyle = '#4ade80';
+                ctx.fillRect(0, groundY, width, 14);
+
+                // Línia divisor de sòl
+                ctx.beginPath();
+                ctx.moveTo(0, groundY);
+                ctx.lineTo(width, groundY);
+                ctx.strokeStyle = '#0f172a';
+                ctx.lineWidth = 3;
+                ctx.stroke();
+
+                // Detalls del sòl en moviment (patró retro)
+                ctx.strokeStyle = '#ca8a04';
+                ctx.lineWidth = 2;
+                for (let x = -this.groundOffset; x < width; x += 20) {
+                    ctx.beginPath();
+                    ctx.moveTo(x, groundY + 14);
+                    ctx.lineTo(x - 10, groundY + groundHeight);
+                    ctx.stroke();
+                }
+            }
+        };
+
+        // --- Detecció de Col·lisions ---
+        function checkCollision() {
+            const groundY = height - 60;
+
+            // Xoc amb el sòl
+            if (bird.y + bird.radius >= groundY) {
+                return true;
+            }
+
+            // Xoc amb canonades
+            for (let p of pipes.list) {
+                const pipeLeft = p.x;
+                const pipeRight = p.x + pipes.width;
+                const topPipeBottom = p.top;
+                const bottomPipeTop = height - 60 - p.bottom;
+
+                // Comprovar si l'ocell està horitzontalment dins de la canonada
+                if (bird.x + bird.radius > pipeLeft && bird.x - bird.radius < pipeRight) {
+                    // Comprovar col·lisió vertical (part superior o inferior)
+                    if (bird.y - bird.radius < topPipeBottom || bird.y + bird.radius > bottomPipeTop) {
+                        return true;
+                    }
+                }
+            }
+
+            return false;
+        }
+
+        // --- Control i Gestió de Joc ---
+        function triggerJump() {
+            sound.init();
+            if (gameState === 'PLAYING') {
+                bird.flap();
+            }
+        }
+
+        function startGame() {
+            sound.init();
+            score = 0;
+            scoreDisplay.textContent = score;
+            bird.reset();
+            pipes.reset();
+            gameState = 'PLAYING';
+
+            startOverlay.classList.add('hidden');
+            gameOverOverlay.classList.add('hidden');
+            newRecordMsg.classList.add('hidden');
+        }
+
+        function gameOver() {
+            gameState = 'GAMEOVER';
+            sound.playHit();
+
+            // Actualitzar millor puntuació
+            let isNewRecord = false;
+            if (score > highScore) {
+                highScore = score;
+                localStorage.setItem('flappy_bird_high_score', highScore);
+                highScoreDisplay.textContent = highScore;
+                isNewRecord = true;
+            }
+
+            finalScore.textContent = score;
+            finalHighScore.textContent = highScore;
+
+            if (isNewRecord && score > 0) {
+                newRecordMsg.classList.remove('hidden');
+            }
+
+            gameOverOverlay.classList.remove('hidden');
+        }
+
+        // --- Bucle Principal (Game Loop) ---
+        function loop() {
+            // Actualitzacions d'estat
+            background.update();
+
+            if (gameState === 'PLAYING') {
+                bird.update();
+                pipes.update();
+
+                if (checkCollision()) {
+                    gameOver();
+                }
+            }
+
+            // Dibuixat de la scene
+            ctx.clearRect(0, 0, width, height);
+            background.draw();
+            pipes.draw();
+            bird.draw();
+
+            requestAnimationFrame(loop);
+        }
+
+        // --- Esdeveniments (Events) ---
+        // Teclat
+        window.addEventListener('keydown', (e) => {
+            if (e.code === 'Space') {
+                e.preventDefault();
+                if (gameState === 'PLAYING') {
+                    triggerJump();
+                } else if (gameState === 'START') {
+                    startGame();
+                }
+            }
+        });
+
+        // Toc a la pantalla / Clics del ratolí a l'àrea de joc
+        container.addEventListener('pointerdown', (e) => {
+            // Ignorar si es fa clic als botons
+            if (e.target.tagName === 'BUTTON') return;
+
+            if (gameState === 'PLAYING') {
+                triggerJump();
+            }
+        });
+
+        // Botons
+        startBtn.addEventListener('click', startGame);
+        restartBtn.addEventListener('click', startGame);
+
+        // Control de So (Mute)
+        muteBtn.addEventListener('click', () => {
+            sound.muted = !sound.muted;
+            muteBtn.textContent = sound.muted ? 'DESACTIVATS' : 'ACTIVATS';
+            muteBtn.classList.toggle('text-red-400', sound.muted);
+            muteBtn.classList.toggle('text-yellow-400', !sound.muted);
+        });
+
+        // Iniciar la posició inicial de l'ocell i el bucle
+        bird.reset();
+        requestAnimationFrame(loop);
+    </script>
+</body>
+</html>
